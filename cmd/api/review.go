@@ -167,7 +167,7 @@ func (a *applicationDependencies) deleteReviewHandler(w http.ResponseWriter, r *
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
-			a.IDnotFound(w, r, id) // Pass the ID to the custom message handler
+			a.RIDnotFound(w, r, id) // Pass the ID to the custom message handler
 		default:
 			a.serverErrorResponse(w, r, err)
 		}

@@ -5,24 +5,28 @@ import (
 	"fmt"
 	"net/http"
 
-	// import the data package which contains the definition for Comment
 	"github.com/mtechguy/test1/internal/data"
 	"github.com/mtechguy/test1/internal/validator"
 )
 
+// Struct for handling incoming JSON for Product data
 var incomingProductData struct {
-	Content *string `json:"content"`
-	Author  *string `json:"author"`
+	Name          *string  `json:"name"`
+	Description   *string  `json:"description"`
+	Category      *string  `json:"category"`
+	ImageURL      *string  `json:"image_url"`
+	Price         *string  `json:"price"`
+	AverageRating *float32 `json:"average_rating"`
 }
 
 func (a *applicationDependencies) createProductHandler(w http.ResponseWriter, r *http.Request) {
-	// create a struct to hold a comment
-	// we use struct tags to make the names display in lowercase
 	var incomingProductData struct {
-		Content string `json:"content"`
-		Author  string `json:"author"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Category    string `json:"category"`
+		ImageURL    string `json:"image_url"`
+		Price       string `json:"price"`
 	}
-	// perform the decoding
 	err := a.readJSON(w, r, &incomingProductData)
 	if err != nil {
 		a.badRequestResponse(w, r, err)
@@ -30,27 +34,27 @@ func (a *applicationDependencies) createProductHandler(w http.ResponseWriter, r 
 	}
 
 	product := &data.Product{
-		Content: incomingProductData.Content,
-		Author:  incomingProductData.Author,
+		Name:        incomingProductData.Name,
+		Description: incomingProductData.Description,
+		Category:    incomingProductData.Category,
+		ImageURL:    incomingProductData.ImageURL,
+		Price:       incomingProductData.Price,
 	}
-	// Initialize a Validator instance
 	v := validator.New()
-
 	data.ValidateProduct(v, product)
 	if !v.IsEmpty() {
-		a.failedValidationResponse(w, r, v.Errors) // implemented later
+		a.failedValidationResponse(w, r, v.Errors)
 		return
 	}
+
 	err = a.productModel.InsertProduct(product)
 	if err != nil {
 		a.serverErrorResponse(w, r, err)
 		return
 	}
 
-	fmt.Fprintf(w, "%+v\n", incomingProductData) // delete this
-	// Set a Location header. The path to the newly created comment
 	headers := make(http.Header)
-	headers.Set("Location", fmt.Sprintf("/v1/comments/%d", product.ID))
+	headers.Set("Location", fmt.Sprintf("products/%d", product.ProductID))
 
 	data := envelope{
 		"Product": product,
@@ -58,24 +62,16 @@ func (a *applicationDependencies) createProductHandler(w http.ResponseWriter, r 
 	err = a.writeJSON(w, http.StatusCreated, data, headers)
 	if err != nil {
 		a.serverErrorResponse(w, r, err)
-		return
 	}
-
-	// for now display the result
-	fmt.Fprintf(w, "%+v\n", incomingProductData)
 }
 
 func (a *applicationDependencies) displayProductHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the id from the URL /v1/comments/:id so that we
-	// can use it to query teh comments table. We will
-	// implement the readIDParam() function later
 	id, err := a.readIDParam(r)
 	if err != nil {
 		a.notFoundResponse(w, r)
 		return
 	}
 
-	// Call Get() to retrieve the comment with the specified id
 	product, err := a.productModel.GetProduct(id)
 	if err != nil {
 		switch {
@@ -87,27 +83,22 @@ func (a *applicationDependencies) displayProductHandler(w http.ResponseWriter, r
 		return
 	}
 
-	// display the comment
 	data := envelope{
 		"Product": product,
 	}
 	err = a.writeJSON(w, http.StatusOK, data, nil)
 	if err != nil {
 		a.serverErrorResponse(w, r, err)
-		return
 	}
-
 }
 
 func (a *applicationDependencies) updateProductHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the ID from the URL
 	id, err := a.readIDParam(r)
 	if err != nil {
 		a.notFoundResponse(w, r)
 		return
 	}
 
-	// Retrieve the comment from the database
 	product, err := a.productModel.GetProduct(id)
 	if err != nil {
 		if errors.Is(err, data.ErrRecordNotFound) {
@@ -118,22 +109,44 @@ func (a *applicationDependencies) updateProductHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	// Decode the incoming JSON
+	var incomingProductData struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Category    *string `json:"category"`
+		ImageURL    *string `json:"image_url"`
+		Price       *string `json:"price"`
+		//UpdatedAt   *time.Time `json:"updated_at"`
+		// AverageRating *float64   `json:"average_rating"`
+	}
+
 	err = a.readJSON(w, r, &incomingProductData)
 	if err != nil {
 		a.badRequestResponse(w, r, err)
 		return
 	}
 
-	// Update the comment fields based on the incoming data
-	if incomingProductData.Content != nil {
-		product.Content = *incomingProductData.Content
+	if incomingProductData.Name != nil {
+		product.Name = *incomingProductData.Name
 	}
-	if incomingProductData.Author != nil {
-		product.Author = *incomingProductData.Author
+	if incomingProductData.Description != nil {
+		product.Description = *incomingProductData.Description
 	}
+	if incomingProductData.Category != nil {
+		product.Category = *incomingProductData.Category
+	}
+	if incomingProductData.ImageURL != nil {
+		product.ImageURL = *incomingProductData.ImageURL
+	}
+	if incomingProductData.Price != nil {
+		product.Price = *incomingProductData.Price
+	}
+	// if incomingProductData.UpdatedAt != nil {
+	// 	product.CreatedAt = *incomingProductData.UpdatedAt
+	// }
+	// if incomingProductData.AverageRating != nil {
+	// 	product.AverageRating = *incomingProductData.AverageRating
+	// }
 
-	// Validate the updated comment
 	v := validator.New()
 	data.ValidateProduct(v, product)
 	if !v.IsEmpty() {
@@ -141,21 +154,18 @@ func (a *applicationDependencies) updateProductHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	// Perform the update in the database
 	err = a.productModel.UpdateProduct(product)
 	if err != nil {
 		a.serverErrorResponse(w, r, err)
 		return
 	}
 
-	// Respond with the updated comment
 	data := envelope{
 		"Product": product,
 	}
 	err = a.writeJSON(w, http.StatusOK, data, nil)
 	if err != nil {
 		a.serverErrorResponse(w, r, err)
-		return
 	}
 }
 
@@ -170,7 +180,7 @@ func (a *applicationDependencies) deleteProductHandler(w http.ResponseWriter, r 
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
-			a.IDnotFound(w, r, id) // Pass the ID to the custom message handler
+			a.PIDnotFound(w, r, id)
 		default:
 			a.serverErrorResponse(w, r, err)
 		}
@@ -187,48 +197,31 @@ func (a *applicationDependencies) deleteProductHandler(w http.ResponseWriter, r 
 }
 
 func (a *applicationDependencies) listProductHandler(w http.ResponseWriter, r *http.Request) {
-	// Create a struct to hold the query parameters
-	// Later on we will add fields for pagination and sorting (filters)
 	var queryParametersData struct {
-		Content string
-		Author  string
+		Name     string
+		Category string
 		data.Filters
 	}
-	// get the query parameters from the URL
-	queryParameters := r.URL.Query()
-	// Load the query parameters into our struct
-	queryParametersData.Content = a.getSingleQueryParameter(
-		queryParameters,
-		"content",
-		"")
 
-	queryParametersData.Author = a.getSingleQueryParameter(
-		queryParameters,
-		"author",
-		"")
+	queryParameters := r.URL.Query()
+	queryParametersData.Name = a.getSingleQueryParameter(queryParameters, "name", "")
+	queryParametersData.Category = a.getSingleQueryParameter(queryParameters, "category", "")
 
 	v := validator.New()
-	queryParametersData.Filters.Page = a.getSingleIntegerParameter(
-		queryParameters, "page", 1, v)
-	queryParametersData.Filters.PageSize = a.getSingleIntegerParameter(
-		queryParameters, "page_size", 10, v)
+	queryParametersData.Filters.Page = a.getSingleIntegerParameter(queryParameters, "page", 1, v)
+	queryParametersData.Filters.PageSize = a.getSingleIntegerParameter(queryParameters, "page_size", 10, v)
+	queryParametersData.Filters.Sort = a.getSingleQueryParameter(queryParameters, "sort", "product_id")
+	queryParametersData.Filters.SortSafeList = []string{"product_id", "name", "-product_id", "-name"}
 
-	queryParametersData.Filters.Sort = a.getSingleQueryParameter(
-		queryParameters, "sort", "id")
-
-	queryParametersData.Filters.SortSafeList = []string{"id", "author",
-		"-id", "-author"}
-
-	// Check if our filters are valid
 	data.ValidateFilters(v, queryParametersData.Filters)
 	if !v.IsEmpty() {
 		a.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	product, metadata, err := a.productModel.GetAllProducts(
-		queryParametersData.Content,
-		queryParametersData.Author,
+	products, metadata, err := a.productModel.GetAllProducts(
+		queryParametersData.Name,
+		queryParametersData.Category,
 		queryParametersData.Filters,
 	)
 	if err != nil {
@@ -236,7 +229,7 @@ func (a *applicationDependencies) listProductHandler(w http.ResponseWriter, r *h
 		return
 	}
 	data := envelope{
-		"comments":  product,
+		"products":  products,
 		"@metadata": metadata,
 	}
 	err = a.writeJSON(w, http.StatusOK, data, nil)

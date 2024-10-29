@@ -4,9 +4,9 @@ CREATE TABLE products (
     description text NOT NULL,
     category text NOT NULL,
     image_url text NOT NULL,
+    price text NOT NULL,
     average_rating DECIMAL(3, 2) DEFAULT 0.00, -- Average rating from reviews
     created_at timestamp(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at timestamp(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     version integer NOT NULL DEFAULT 1
 );
 

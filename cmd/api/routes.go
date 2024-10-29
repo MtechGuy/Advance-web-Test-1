@@ -15,12 +15,12 @@ func (a *applicationDependencies) routes() http.Handler {
 
 	router.MethodNotAllowed = http.HandlerFunc(a.methodNotAllowedResponse)
 	//Product
-	router.HandlerFunc(http.MethodGet, "/v1/healthcheck", a.healthcheckHandler)
-	router.HandlerFunc(http.MethodGet, "/v1/comments", a.listProductHandler)
-	router.HandlerFunc(http.MethodPost, "/v1/comments", a.createProductHandler)
-	router.HandlerFunc(http.MethodGet, "/v1/comments/:id", a.displayProductHandler)
-	router.HandlerFunc(http.MethodPatch, "/v1/comments/:id", a.updateProductHandler)
-	router.HandlerFunc(http.MethodDelete, "/v1/comments/:id", a.deleteProductHandler)
+	router.HandlerFunc(http.MethodGet, "/healthcheck", a.healthcheckHandler)
+	router.HandlerFunc(http.MethodGet, "/products", a.listProductHandler)
+	router.HandlerFunc(http.MethodPost, "/products", a.createProductHandler)
+	router.HandlerFunc(http.MethodGet, "/products/:id", a.displayProductHandler)
+	router.HandlerFunc(http.MethodPatch, "/products/:id", a.updateProductHandler)
+	router.HandlerFunc(http.MethodDelete, "/products/:id", a.deleteProductHandler)
 
 	//Review part
 	router.HandlerFunc(http.MethodGet, "/v1/comments", a.listReviewHandler)
