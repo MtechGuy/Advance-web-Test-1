@@ -10,14 +10,35 @@ CREATE TABLE products (
     version integer NOT NULL DEFAULT 1
 );
 
--- Step 2: Create the Reviews Table
 CREATE TABLE reviews (
     review_id bigserial PRIMARY KEY,
     product_id INT REFERENCES products(product_id) ON DELETE CASCADE,
-    rating INT CHECK (rating BETWEEN 1 AND 5),
+    author VARCHAR(255),
+    rating FLOAT CHECK (rating BETWEEN 1 AND 5),
     review_text text NOT NULL,
     helpful_count INT DEFAULT 0,
     created_at timestamp(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at timestamp(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
-     version integer NOT NULL DEFAULT 1
+    version integer NOT NULL DEFAULT 1
 );
+
+CREATE OR REPLACE FUNCTION automatic_average_rating()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update the average rating of the product associated with the new review
+    UPDATE products
+    SET average_rating = (
+        SELECT ROUND(CAST(AVG(rating) AS NUMERIC), 2)
+        FROM reviews
+        WHERE reviews.product_id = NEW.product_id
+    )
+    WHERE product_id = NEW.product_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger that executes automatic_average_rating() when a review is added, updated, or deleted
+CREATE OR REPLACE TRIGGER update_product_rating
+AFTER INSERT OR UPDATE OR DELETE ON reviews
+FOR EACH ROW
+EXECUTE FUNCTION automatic_average_rating();

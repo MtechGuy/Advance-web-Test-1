@@ -1,4 +1,4 @@
-// Filename: internal/data/comments.go
+// Filename: internal/data/reviews.go
 package data
 
 import (
@@ -11,13 +11,16 @@ import (
 	"github.com/mtechguy/test1/internal/validator"
 )
 
-// each name begins with uppercase so that they are exportable/public
+// Review struct
 type Review struct {
-	ID        int64     `json:"id"`
-	Content   string    `json:"content"`
-	Author    string    `json:"author"`
-	CreatedAt time.Time `json:"-"`
-	Version   int32     `json:"version"`
+	ReviewID     int64         `json:"review_id"`  // bigserial primary key
+	ProductID    int64         `json:"product_id"` // foreign key referencing products
+	Author       string        `json:"author"`
+	Rating       int64         `json:"rating"`        // integer with a constraint (1-5)
+	ReviewText   string        `json:"review_text"`   // non-null text field
+	HelpfulCount sql.NullInt64 `json:"helpful_count"` // nullable integer, default 0
+	CreatedAt    time.Time     `json:"-"`             // timestamp with timezone, default now()
+	Version      int           `json:"version"`
 }
 
 type ReviewModel struct {
@@ -25,113 +28,103 @@ type ReviewModel struct {
 }
 
 func ValidateReview(v *validator.Validator, review *Review) {
-
-	v.Check(review.Content != "", "content", "must be provided")
-	// check if the Author field is empty
 	v.Check(review.Author != "", "author", "must be provided")
-	// check if the Content field is empty
-	v.Check(len(review.Content) <= 100, "content", "must not be more than 100 bytes long")
-	// check if the Author field is empty
+	v.Check(review.ReviewText != "", "review_text", "must be provided")
+
 	v.Check(len(review.Author) <= 25, "author", "must not be more than 25 bytes long")
+	v.Check(review.ProductID > 0, "product_id", "must be a positive integer")
+	v.Check(review.Rating >= 1 && review.Rating <= 5, "rating", "must be between 1 and 5")
 }
 
 func (c ReviewModel) InsertReview(review *Review) error {
-	// the SQL query to be executed against the database table
 	query := `
-		 INSERT INTO comments (content, author)
-		 VALUES ($1, $2)
-		 RETURNING id, created_at, version
-		 `
-	// the actual values to replace $1, and $2
-	args := []any{review.Content, review.Author}
+		INSERT INTO reviews (product_id, author, rating, review_text, helpful_count)
+		VALUES ($1, $2, $3, $4, COALESCE($5, 0))
+		RETURNING review_id, created_at, version
+	`
+	args := []any{review.ProductID, review.Author, review.Rating, review.ReviewText, review.HelpfulCount}
 
-	// Create a context with a 3-second timeout. No database
-	// operation should take more than 3 seconds or we will quit it
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	// execute the query against the comments database table. We ask for the the
-	// id, created_at, and version to be sent back to us which we will use
-	// to update the Comment struct later on
+
 	return c.DB.QueryRowContext(ctx, query, args...).Scan(
-		&review.ID,
+		&review.ReviewID,
 		&review.CreatedAt,
 		&review.Version)
 }
 
-// Get a specific Comment from the comments table
+// Method in the ProductModel to check if a product exists
+func (m *ProductModel) ProductExists(productID int64) (bool, error) {
+	query := `SELECT EXISTS (SELECT 1 FROM products WHERE product_id = $1)`
+	var exists bool
+	err := m.DB.QueryRow(query, productID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func (c ReviewModel) GetReview(id int64) (*Review, error) {
-	// check if the id is valid
 	if id < 1 {
 		return nil, ErrRecordNotFound
 	}
-	// the SQL query to be executed against the database table
 	query := `
-		 SELECT id, created_at, content, author, version
-		 FROM comments
-		 WHERE id = $1
-	   `
-	// declare a variable of type Comment to store the returned comment
+		SELECT review_id, product_id, author, rating, review_text, helpful_count, created_at, version
+		FROM reviews
+		WHERE review_id = $1
+	`
 	var review Review
 
-	// Set a 3-second context/timer
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	err := c.DB.QueryRowContext(ctx, query, id).Scan(
-		&review.ID,
-		&review.CreatedAt,
-		&review.Content,
+		&review.ReviewID,
+		&review.ProductID,
 		&review.Author,
+		&review.Rating,
+		&review.ReviewText,
+		&review.HelpfulCount,
+		&review.CreatedAt,
 		&review.Version,
 	)
-	// Cont'd on the next slide
-	// check for which type of error
 	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
-		default:
-			return nil, err
 		}
+		return nil, err
 	}
 	return &review, nil
 }
 
 func (c ReviewModel) UpdateReview(review *Review) error {
-	// The SQL query to be executed against the database table
-	// Every time we make an update, we increment the version number
 	query := `
-			UPDATE comments
-			SET content = $1, author = $2, version = version + 1
-			WHERE id = $3
-			RETURNING version 
-			`
+		UPDATE reviews
+		SET author = $1, rating = $2, review_text = $3, version = version + 1
+		WHERE review_id = $4
+		RETURNING version
+	`
 
-	args := []any{review.Content, review.Author, review.ID}
+	args := []any{review.Author, review.Rating, review.ReviewText, review.ReviewID}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	return c.DB.QueryRowContext(ctx, query, args...).Scan(&review.Version)
-
 }
 
 func (c ReviewModel) DeleteReview(id int64) error {
-
-	// check if the id is valid
 	if id < 1 {
 		return ErrRecordNotFound
 	}
-	// the SQL query to be executed against the database table
 	query := `
-        DELETE FROM comments
-        WHERE id = $1
-		`
+		DELETE FROM reviews
+		WHERE review_id = $1
+	`
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	// ExecContext does not return any rows unlike QueryRowContext.
-	// It only returns  information about the the query execution
-	// such as how many rows were affected
 	result, err := c.DB.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
@@ -141,32 +134,28 @@ func (c ReviewModel) DeleteReview(id int64) error {
 	if err != nil {
 		return err
 	}
-	// Probably a wrong id was provided or the client is trying to
-	// delete an already deleted comment
 	if rowsAffected == 0 {
 		return ErrRecordNotFound
 	}
 
 	return nil
-
 }
 
-func (c ReviewModel) GetAllReviews(content, author string, filters Filters) ([]*Review, Metadata, error) {
+func (c ReviewModel) GetAllReviews(author string, filters Filters) ([]*Review, Metadata, error) {
 	// Construct the SQL query with placeholders for parameters
 	query := fmt.Sprintf(`
-	SELECT COUNT(*) OVER(), id, created_at, content, author, version
-	FROM comments
-	WHERE (to_tsvector('simple', content) @@ plainto_tsquery('simple', $1) OR $1 = '') 
-	  AND (to_tsvector('simple', author) @@ plainto_tsquery('simple', $2) OR $2 = '') 
-	ORDER BY %s %s, id ASC 
-	LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
+	SELECT COUNT(*) OVER(), review_id, product_id, author, rating, review_text, helpful_count, created_at, version
+	FROM reviews
+	WHERE (to_tsvector('simple', author) @@ plainto_tsquery('simple', $1) OR $1 = '') 
+	ORDER BY %s %s, review_id ASC 
+	LIMIT $2 OFFSET $3`, filters.sortColumn(), filters.sortDirection())
 
 	// Set a context with a 3-second timeout for query execution
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	// Execute the query with provided filters and parameters
-	rows, err := c.DB.QueryContext(ctx, query, content, author, filters.limit(), filters.offset())
+	rows, err := c.DB.QueryContext(ctx, query, author, filters.limit(), filters.offset())
 	if err != nil {
 		return nil, Metadata{}, err
 	}
@@ -178,7 +167,7 @@ func (c ReviewModel) GetAllReviews(content, author string, filters Filters) ([]*
 	// Iterate over result rows and scan data into Review struct
 	for rows.Next() {
 		var review Review
-		if err := rows.Scan(&totalRecords, &review.ID, &review.CreatedAt, &review.Content, &review.Author, &review.Version); err != nil {
+		if err := rows.Scan(&totalRecords, &review.ReviewID, &review.ProductID, &review.Author, &review.Rating, &review.ReviewText, &review.HelpfulCount, &review.CreatedAt, &review.Version); err != nil {
 			return nil, Metadata{}, err
 		}
 		reviews = append(reviews, &review)
@@ -193,4 +182,55 @@ func (c ReviewModel) GetAllReviews(content, author string, filters Filters) ([]*
 	metadata := calculateMetaData(totalRecords, filters.Page, filters.PageSize)
 
 	return reviews, metadata, nil
+}
+
+func (c ReviewModel) GetAllProductReviews(productID int64) ([]Review, error) {
+	if productID < 1 {
+		return nil, ErrRecordNotFound
+	}
+
+	query := `
+		SELECT review_id, author, rating, review_text, helpful_count, created_at, version
+		FROM reviews
+		WHERE product_id = $1
+	`
+
+	// Initialize a slice to hold all reviews for the product
+	var reviews []Review
+
+	// Set up the context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Query all rows that match the productID
+	rows, err := c.DB.QueryContext(ctx, query, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Iterate through the rows and scan each row into a Review struct
+	for rows.Next() {
+		var review Review
+		err := rows.Scan(
+			&review.ReviewID,
+			&review.Author,
+			&review.Rating,
+			&review.ReviewText,
+			&review.HelpfulCount,
+			&review.CreatedAt,
+			&review.Version,
+		)
+		if err != nil {
+			return nil, err
+		}
+		reviews = append(reviews, review)
+	}
+
+	// Check for any errors encountered during iteration
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return reviews, nil
 }

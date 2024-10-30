@@ -44,6 +44,11 @@ func (a *applicationDependencies) notFoundResponse(w http.ResponseWriter,
 	a.errorResponseJSON(w, r, http.StatusNotFound, message)
 }
 
+func (a *applicationDependencies) PRIDnotFound(w http.ResponseWriter, r *http.Request, id int64) {
+	message := fmt.Sprintf("Product with id = %d was not found", id)
+	a.errorResponseJSON(w, r, http.StatusNotFound, message)
+}
+
 func (a *applicationDependencies) PIDnotFound(w http.ResponseWriter, r *http.Request, id int64) {
 	message := fmt.Sprintf("Product with id = %d was already deleted", id)
 	a.errorResponseJSON(w, r, http.StatusNotFound, message)
