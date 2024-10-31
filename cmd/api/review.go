@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,14 +13,25 @@ import (
 
 // Struct to hold incoming review data
 var incomingReviewData struct {
-	ProductID  *int64  `json:"product_id"` // foreign key referencing products
-	Author     *string `json:"author"`
-	Rating     *int64  `json:"rating"`      // integer with a constraint (1-5)
-	ReviewText *string `json:"review_text"` // non-null text field
+	ProductID    *int64  `json:"product_id"` // foreign key referencing products
+	Author       *string `json:"author"`
+	Rating       *int64  `json:"rating"` // integer with a constraint (1-5)
+	HelpfulCount *int32  `json:"helpful_count"`
+	ReviewText   *string `json:"review_text"` // non-null text field
+
 }
 
 // Updated createReviewHandler with product existence check
 func (a *applicationDependencies) createReviewHandler(w http.ResponseWriter, r *http.Request) {
+	// Create a local instance of incomingReviewData
+	var incomingReviewData struct {
+		ProductID    *int64  `json:"product_id"` // foreign key referencing products
+		Author       *string `json:"author"`
+		Rating       *int64  `json:"rating"` // integer with a constraint (1-5)
+		HelpfulCount *int32  `json:"helpful_count"`
+		ReviewText   *string `json:"review_text"` // non-null text field
+	}
+
 	// Decode the incoming JSON into the struct
 	err := a.readJSON(w, r, &incomingReviewData)
 	if err != nil {
@@ -46,13 +56,17 @@ func (a *applicationDependencies) createReviewHandler(w http.ResponseWriter, r *
 		return
 	}
 
+	if incomingReviewData.HelpfulCount == nil {
+		incomingReviewData.HelpfulCount = new(int32) // Default to 0 if not provided
+	}
+
 	// Create the review object based on the incoming data
 	review := &data.Review{
 		ProductID:    int64(*incomingReviewData.ProductID),
 		Author:       *incomingReviewData.Author,
 		Rating:       int64(*incomingReviewData.Rating),
 		ReviewText:   *incomingReviewData.ReviewText,
-		HelpfulCount: sql.NullInt64{Int64: 0},
+		HelpfulCount: int32(*incomingReviewData.HelpfulCount),
 		CreatedAt:    time.Now(),
 	}
 
@@ -91,7 +105,7 @@ func (a *applicationDependencies) displayReviewHandler(w http.ResponseWriter, r 
 	// Get the id from the URL /v1/comments/:id so that we
 	// can use it to query teh comments table. We will
 	// implement the readIDParam() function later
-	id, err := a.readIDParam(r)
+	id, err := a.readIDParam(r, "rid")
 	if err != nil {
 		a.notFoundResponse(w, r)
 		return
@@ -121,69 +135,9 @@ func (a *applicationDependencies) displayReviewHandler(w http.ResponseWriter, r 
 
 }
 
-// func (a *applicationDependencies) updateReviewHandler(w http.ResponseWriter, r *http.Request) {
-// 	// Get the ID from the URL
-// 	id, err := a.readIDParam(r)
-// 	if err != nil {
-// 		a.notFoundResponse(w, r)
-// 		return
-// 	}
-
-// 	// Retrieve the comment from the database
-// 	review, err := a.reviewModel.GetReview(id)
-// 	if err != nil {
-// 		if errors.Is(err, data.ErrRecordNotFound) {
-// 			a.notFoundResponse(w, r)
-// 		} else {
-// 			a.serverErrorResponse(w, r, err)
-// 		}
-// 		return
-// 	}
-
-// 	// Decode the incoming JSON
-// 	err = a.readJSON(w, r, &incomingReviewData)
-// 	if err != nil {
-// 		a.badRequestResponse(w, r, err)
-// 		return
-// 	}
-
-// 	// Update the comment fields based on the incoming data
-// 	if incomingReviewData.Content != nil {
-// 		review.Content = *incomingReviewData.Content
-// 	}
-// 	if incomingReviewData.Author != nil {
-// 		review.Author = *incomingReviewData.Author
-// 	}
-
-// 	// Validate the updated comment
-// 	v := validator.New()
-// 	data.ValidateReview(v, review)
-// 	if !v.IsEmpty() {
-// 		a.failedValidationResponse(w, r, v.Errors)
-// 		return
-// 	}
-
-// 	// Perform the update in the database
-// 	err = a.reviewModel.UpdateReview(review)
-// 	if err != nil {
-// 		a.serverErrorResponse(w, r, err)
-// 		return
-// 	}
-
-// 	// Respond with the updated comment
-// 	data := envelope{
-// 		"Review": review,
-// 	}
-// 	err = a.writeJSON(w, http.StatusOK, data, nil)
-// 	if err != nil {
-// 		a.serverErrorResponse(w, r, err)
-// 		return
-// 	}
-// }
-
 func (a *applicationDependencies) updateReviewHandler(w http.ResponseWriter, r *http.Request) {
 	// Read the review ID from the URL parameter
-	id, err := a.readIDParam(r)
+	id, err := a.readIDParam(r, "rid")
 	if err != nil {
 		a.notFoundResponse(w, r)
 		return
@@ -251,7 +205,7 @@ func (a *applicationDependencies) updateReviewHandler(w http.ResponseWriter, r *
 }
 
 func (a *applicationDependencies) deleteReviewHandler(w http.ResponseWriter, r *http.Request) {
-	id, err := a.readIDParam(r)
+	id, err := a.readIDParam(r, "rid")
 	if err != nil {
 		a.notFoundResponse(w, r)
 		return
@@ -327,9 +281,20 @@ func (a *applicationDependencies) listProductReviewHandler(w http.ResponseWriter
 	// Get the id from the URL /v1/comments/:id so that we
 	// can use it to query teh comments table. We will
 	// implement the readIDParam() function later
-	id, err := a.readIDParam(r)
+	id, err := a.readIDParam(r, "rid")
 	if err != nil {
 		a.notFoundResponse(w, r)
+		return
+	}
+
+	// Check if the review exists
+	exists, err := a.productModel.ProductExists(id) // Assuming you have an Exists method in reviewModel
+	if err != nil {
+		a.serverErrorResponse(w, r, err)
+		return
+	}
+	if !exists {
+		a.PRIDnotFound(w, r, id)
 		return
 	}
 
@@ -355,4 +320,81 @@ func (a *applicationDependencies) listProductReviewHandler(w http.ResponseWriter
 		return
 	}
 
+}
+
+func (a *applicationDependencies) HelpfulCountHandler(w http.ResponseWriter, r *http.Request) {
+	// Read the review ID from the URL parameter
+	id, err := a.readIDParam(r, "rid")
+	if err != nil {
+		a.notFoundResponse(w, r)
+		return
+	}
+
+	// Check if the review exists
+	exists, err := a.reviewModel.Exists(id) // Assuming you have an Exists method in reviewModel
+	if err != nil {
+		a.serverErrorResponse(w, r, err)
+		return
+	}
+	if !exists {
+		a.RRIDnotFound(w, r, id)
+		return
+	}
+
+	// Retrieve and update the review's helpful count in the database
+	review, err := a.reviewModel.UpdateHelpfulCount(id)
+	if err != nil {
+		a.serverErrorResponse(w, r, err)
+		return
+	}
+
+	// Send the updated review as a JSON response
+	data := envelope{
+		"review": review,
+	}
+	err = a.writeJSON(w, http.StatusOK, data, nil)
+	if err != nil {
+		a.serverErrorResponse(w, r, err)
+	}
+
+	// Log a confirmation message for the incremented helpful count
+	confirmationMessage := fmt.Sprintf("\nHelpful count incremented by 1 for the review with id = %d", id)
+	fmt.Fprintln(w, confirmationMessage)
+}
+
+func (a *applicationDependencies) getProductReviewHandler(w http.ResponseWriter, r *http.Request) {
+	// Read the product ID from the request
+	pid, err := a.readIDParam(r, "pid")
+	if err != nil {
+		a.notFoundResponse(w, r)
+		return
+	}
+
+	// Read the review ID from the request
+	rid, err := a.readIDParam(r, "rid")
+	if err != nil {
+		a.notFoundResponse(w, r)
+		return
+	}
+
+	// Retrieve the review from the model using the new GetProductReview function
+	review, err := a.reviewModel.GetProductReview(rid, pid)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			a.notFoundResponse(w, r)
+		default:
+			a.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	// Send the updated review as a JSON response
+	data := envelope{
+		"review": review,
+	}
+	err = a.writeJSON(w, http.StatusOK, data, nil)
+	if err != nil {
+		a.serverErrorResponse(w, r, err)
+	}
 }

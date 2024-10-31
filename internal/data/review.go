@@ -13,14 +13,14 @@ import (
 
 // Review struct
 type Review struct {
-	ReviewID     int64         `json:"review_id"`  // bigserial primary key
-	ProductID    int64         `json:"product_id"` // foreign key referencing products
-	Author       string        `json:"author"`
-	Rating       int64         `json:"rating"`        // integer with a constraint (1-5)
-	ReviewText   string        `json:"review_text"`   // non-null text field
-	HelpfulCount sql.NullInt64 `json:"helpful_count"` // nullable integer, default 0
-	CreatedAt    time.Time     `json:"-"`             // timestamp with timezone, default now()
-	Version      int           `json:"version"`
+	ReviewID     int64     `json:"review_id"`  // bigserial primary key
+	ProductID    int64     `json:"product_id"` // foreign key referencing products
+	Author       string    `json:"author"`
+	Rating       int64     `json:"rating"`        // integer with a constraint (1-5)
+	ReviewText   string    `json:"review_text"`   // non-null text field
+	HelpfulCount int32     `json:"helpful_count"` // nullable integer, default 0
+	CreatedAt    time.Time `json:"-"`             // timestamp with timezone, default now()
+	Version      int       `json:"version"`
 }
 
 type ReviewModel struct {
@@ -52,18 +52,6 @@ func (c ReviewModel) InsertReview(review *Review) error {
 		&review.CreatedAt,
 		&review.Version)
 }
-
-// Method in the ProductModel to check if a product exists
-func (m *ProductModel) ProductExists(productID int64) (bool, error) {
-	query := `SELECT EXISTS (SELECT 1 FROM products WHERE product_id = $1)`
-	var exists bool
-	err := m.DB.QueryRow(query, productID).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
-}
-
 func (c ReviewModel) GetReview(id int64) (*Review, error) {
 	if id < 1 {
 		return nil, ErrRecordNotFound
@@ -233,4 +221,89 @@ func (c ReviewModel) GetAllProductReviews(productID int64) ([]Review, error) {
 	}
 
 	return reviews, nil
+}
+
+func (c *ReviewModel) UpdateHelpfulCount(id int64) (*Review, error) {
+	query := `
+        UPDATE reviews
+        SET helpful_count = helpful_count + 1
+        WHERE review_id = $1
+        RETURNING review_id, author, rating, review_text, helpful_count, version
+    `
+
+	var review Review
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Execute the query and scan the updated review fields
+	err := c.DB.QueryRowContext(ctx, query, id).Scan(
+		&review.ReviewID,
+		&review.Author,
+		&review.Rating,
+		&review.ReviewText,
+		&review.HelpfulCount,
+		&review.Version,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &review, nil
+}
+
+func (m *ProductModel) ProductExists(productID int64) (bool, error) {
+	query := `SELECT EXISTS (SELECT 1 FROM products WHERE product_id = $1)`
+	var exists bool
+	err := m.DB.QueryRow(query, productID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+func (m *ReviewModel) Exists(id int64) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM reviews WHERE review_id = $1)`
+	err := m.DB.QueryRow(query, id).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (c ReviewModel) GetProductReview(rid int64, pid int64) (*Review, error) {
+	//validate id
+	if pid < 1 || rid < 1 {
+		return nil, ErrRecordNotFound
+	}
+
+	//query
+	query := `SELECT review_id, product_id, author, rating, review_text, helpful_count, created_at, version
+	FROM reviews
+	WHERE review_id = $1 AND product_id = $2
+	`
+	var review Review
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := c.DB.QueryRowContext(ctx, query, rid, pid).Scan(
+		&review.ReviewID,
+		&review.ProductID,
+		&review.Author,
+		&review.Rating,
+		&review.ReviewText,
+		&review.HelpfulCount,
+		&review.CreatedAt,
+		&review.Version,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+	return &review, nil
 }

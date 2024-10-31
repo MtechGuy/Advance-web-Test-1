@@ -19,18 +19,20 @@ func (a *applicationDependencies) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/healthcheck", a.healthcheckHandler)
 	router.HandlerFunc(http.MethodGet, "/product", a.listProductHandler)
 	router.HandlerFunc(http.MethodPost, "/product", a.createProductHandler)
-	router.HandlerFunc(http.MethodGet, "/product/:id", a.displayProductHandler)
-	router.HandlerFunc(http.MethodPatch, "/product/:id", a.updateProductHandler)
-	router.HandlerFunc(http.MethodDelete, "/product/:id", a.deleteProductHandler)
+	router.HandlerFunc(http.MethodGet, "/product/:pid", a.displayProductHandler)
+	router.HandlerFunc(http.MethodPatch, "/product/:pid", a.updateProductHandler)
+	router.HandlerFunc(http.MethodDelete, "/product/:pid", a.deleteProductHandler)
 
 	// //Review part
 	router.HandlerFunc(http.MethodGet, "/review", a.listReviewHandler)
 	router.HandlerFunc(http.MethodPost, "/review", a.createReviewHandler)
-	router.HandlerFunc(http.MethodGet, "/review/:id", a.displayReviewHandler)
-	router.HandlerFunc(http.MethodPatch, "/review/:id", a.updateReviewHandler)
-	router.HandlerFunc(http.MethodDelete, "/review/:id", a.deleteReviewHandler)
+	router.HandlerFunc(http.MethodGet, "/review/:rid", a.displayReviewHandler)
+	router.HandlerFunc(http.MethodPatch, "/review/:rid", a.updateReviewHandler)
+	router.HandlerFunc(http.MethodDelete, "/review/:rid", a.deleteReviewHandler)
 
-	router.HandlerFunc(http.MethodGet, "/product_review/:id", a.listProductReviewHandler)
+	router.HandlerFunc(http.MethodGet, "/product-review/:rid", a.listProductReviewHandler)
+	router.HandlerFunc(http.MethodGet, "/product/:pid/review/:rid", a.getProductReviewHandler)
+	router.HandlerFunc(http.MethodPatch, "/helpful-count/:rid", a.HelpfulCountHandler)
 
 	return a.recoverPanic(router)
 
